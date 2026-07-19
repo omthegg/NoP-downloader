@@ -3,8 +3,12 @@ from seleniumbase import sb_cdp
 from markdownify import markdownify
 import os
 import random
+import datetime
 
 archive_folder_name = "NoP_archive"
+
+forbidden_characters = ["<", ">", ":", '"', "/", "|", "?", "*", "#", "$", "^", "(", ")", "[", "]", "{", "}", "'", "!", "@",
+    "%", "&", " ", ";", ".", ",", "~", "`", "=", "+", "\n", "\0"]
 
 get_author_script = """
     (() => {
@@ -17,10 +21,20 @@ get_author_script = """
 get_date_script = """
     (() => {
     const d = document.querySelector('.date');
-    const i = t.getElementsByTagName('time')[0];
+    const i = d.getElementsByTagName('time')[0];
     return i ? i.getAttribute('datetime') : null;
     })();
 """
+
+
+def remove_forbidden_characters(old:str) -> str:
+    new_string = old
+
+    for c in forbidden_characters:
+        new_string = new_string.replace(c, "_")
+
+    return new_string
+
 
 url_list = []
 while True:
@@ -33,7 +47,7 @@ while True:
         continue
 
     url_list = url_list_file.read().split()
-    print(url_list)
+    #print(url_list)
     break
 
 
@@ -74,15 +88,24 @@ while True:
     break
 
 
+if not os.path.exists(archive_folder_name):
+    os.mkdir(archive_folder_name)
+
+
 sb = sb_cdp.Chrome()
 sb.goto("https://www.google.com/")
 sb.sleep(10)
 
+sb.open_new_tab()
 for i in range(starting_index, ending_index):
+    # Turning https://www.reddit.com/ into https://old.reddit.com/
+    link = url_list[i].replace("www", "old", 1)
+
     sb.sleep(random.uniform(5.0, 10.0))
-    sb.get_active_tab().close()
-    sb.open_new_tab()
-    sb.goto(url_list[i])
+    sb.goto(link)
+
+    if sb.get_title().startswith("[deleted"):
+        continue
 
     main_element = sb.find_element(".usertext-body .md")
     inner_html = main_element.get_attribute("innerHTML")
@@ -99,18 +122,25 @@ for i in range(starting_index, ending_index):
 
     date_text = "Submission date: " + str(date) + "\n\n"
 
-    file_name = title_text + ".md"
+    archive_date = datetime.datetime.now()
+    archive_date_text = "Archive date: " + str(archive_date) + "\n\n"
 
-    if not os.path.exists(archive_folder_name):
-        os.mkdir(archive_folder_name)
+    file_name = remove_forbidden_characters(title) + ".md"
 
     save_path = archive_folder_name + "/" + file_name
     with open(save_path, "w") as f:
         f.write(title_text)
         f.write(author_text)
         f.write(date_text)
+        f.write(archive_date_text)
         f.write(markdown)
+
+    with open("log.txt", "w") as log:
+        log_message = "Last index saved: " + str(i + 1)
+        log.write(log_message)
 
 
 sb.sleep(10)
 sb.quit()
+
+input("Done. Press Enter to exit.")
